@@ -1,0 +1,340 @@
+<title>Constraint-Aware Retrieval Explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one reading column (~760px) that walks data -> implementation -> results; diagrams and tables scroll inside their own boxes. */
+:root {
+  --bg: #f6f7f8; --surface: #ffffff; --ink: #14181d; --ink-2: #4a5360; --line: #d9dee4;
+  --accent: #1f6fb2; --accent-soft: #e3eef8;
+  --pass: #17834a; --pass-soft: #e2f3e9; --fail: #c23b32; --fail-soft: #fbe6e4; --unk: #a86a00; --unk-soft: #fbf0d9;
+  --code-bg: #eef1f4;
+  --f-display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111418; --surface: #191d23; --ink: #e8ebef; --ink-2: #a3acb8; --line: #2d333b;
+  --accent: #5ea8e8; --accent-soft: #1b2b3b;
+  --pass: #4cc584; --pass-soft: #15291e; --fail: #f07a70; --fail-soft: #34191a; --unk: #e5ad46; --unk-soft: #2f2512;
+  --code-bg: #20252c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111418; --surface: #191d23; --ink: #e8ebef; --ink-2: #a3acb8; --line: #2d333b;
+  --accent: #5ea8e8; --accent-soft: #1b2b3b;
+  --pass: #4cc584; --pass-soft: #15291e; --fail: #f07a70; --fail-soft: #34191a; --unk: #e5ad46; --unk-soft: #2f2512;
+  --code-bg: #20252c; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 72px; }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 56px; }
+section { display: grid; gap: 16px; min-width: 0; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: 2rem; } h2 { font-size: 1.45rem; } h3 { font-size: 1.1rem; margin-top: 8px; }
+p { margin: 0; } .lede { font-size: 1.1rem; color: var(--ink-2); }
+.eyebrow { font: 500 .75rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--ink-2); font-size: .8rem; }
+td.num, th.num { text-align: right; }
+.hl td { background: var(--fail-soft); font-weight: 600; }
+.pill { display: inline-block; font: 500 .75rem var(--f-mono); padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.pass { background: var(--pass-soft); color: var(--pass); } .fail { background: var(--fail-soft); color: var(--fail); } .unk { background: var(--unk-soft); color: var(--unk); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.card h4 { margin: 0 0 6px; font: 600 .95rem var(--f-body); }
+.card .mono { color: var(--ink-2); font-size: .82rem; }
+pre { margin: 0; background: var(--code-bg); border-radius: 8px; padding: 12px 14px; font: .82rem/1.5 var(--f-mono); overflow-x: auto; }
+svg text { font-family: var(--f-body); fill: var(--ink); }
+svg .t2 { fill: var(--ink-2); font-size: 12px; }
+svg .node { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg .node-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+svg .arrow { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
+svg .ah { fill: var(--ink-2); }
+svg .pass-f { fill: var(--pass-soft); stroke: var(--pass); stroke-width: 1.5; }
+svg .fail-f { fill: var(--fail-soft); stroke: var(--fail); stroke-width: 1.5; }
+svg .unk-f { fill: var(--unk-soft); stroke: var(--unk); stroke-width: 1.5; }
+.bars { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: 150px 1fr 48px; gap: 10px; align-items: center; font-size: .88rem; }
+.bar-track { background: var(--code-bg); border-radius: 4px; height: 14px; position: relative; }
+.bar { height: 100%; border-radius: 4px; }
+.bar.bad { background: var(--fail); } .bar.good { background: var(--accent); }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: .85rem; color: var(--ink-2); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.callout { border-left: 3px solid var(--unk); background: var(--unk-soft); padding: 12px 14px; border-radius: 0 8px 8px 0; }
+ul, ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+a { color: var(--accent); }
+@media (max-width: 520px) { h1 { font-size: 1.6rem; } .bar-row { grid-template-columns: 110px 1fr 40px; } }
+</style>
+
+<main>
+
+<header style="display:grid;gap:12px">
+  <span class="eyebrow">Repository walkthrough</span>
+  <h1>What this project is about, the data, and how it works</h1>
+  <p class="lede">AI assistants that help fix GPU problems look up a troubleshooting procedure, then follow it. Search finds procedures that <em>sound</em> right. This project shows that they often don't <em>fit</em> the actual GPU, and tests a simple fix: check each procedure's conditions against the GPU's real numbers before the assistant sees it.</p>
+</header>
+
+<!-- ===================== 1. THE IDEA ===================== -->
+<section>
+  <span class="eyebrow">1 · The idea in one picture</span>
+  <h2>Two procedures can sound the same and mean opposite things</h2>
+  <p>An operator asks: <em>"We're seeing ECC errors on gpu-0039. How should we handle it?"</em> Two procedures in the runbook both talk about GPU memory errors:</p>
+  <div class="grid2">
+    <div class="box card"><h4>"Corrected errors, low rate: monitor"</h4><p class="mono">Applies when: 1–99 corrected errors today and no uncorrected errors this week</p><p style="margin-top:8px">Action: leave it running.</p></div>
+    <div class="box card"><h4>"Uncorrected error (class B): drain and reboot"</h4><p class="mono">Applies when: 1 or more uncorrected errors today, on a class B GPU</p><p style="margin-top:8px">Action: take it out of service.</p></div>
+  </div>
+  <p>A search engine sees almost the same words. The difference is a number in the GPU's health data. gpu-0039 had <strong>4 uncorrected errors today</strong>, so only the second procedure is right. Picking the first would leave a failing GPU running jobs.</p>
+</section>
+
+<!-- ===================== 2. THE DATA ===================== -->
+<section>
+  <span class="eyebrow">2 · The data</span>
+  <h2>Four pieces of data, all synthetic</h2>
+  <p>Everything is invented for the test, so the right answer to every question is known. There are four pieces, and each lives in its own folder of the repository.</p>
+
+  <div class="box scroll">
+  <svg viewBox="0 0 720 250" width="100%" style="min-width:600px" role="img" aria-label="How the data is built: a healthy fleet, a planted fault, a question, and an answer key computed from the procedures">
+    <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+    <rect x="10" y="20" width="150" height="86" rx="8" class="node"/>
+    <text x="85" y="50" text-anchor="middle" font-weight="600">① Fleet data</text>
+    <text x="85" y="72" text-anchor="middle" class="t2">300 GPUs × 30 days</text>
+    <text x="85" y="90" text-anchor="middle" class="t2">of health numbers</text>
+    <rect x="195" y="20" width="150" height="86" rx="8" class="node-acc"/>
+    <text x="270" y="50" text-anchor="middle" font-weight="600">Plant a fault</text>
+    <text x="270" y="72" text-anchor="middle" class="t2">e.g. 4 uncorrected</text>
+    <text x="270" y="90" text-anchor="middle" class="t2">errors on gpu-0039</text>
+    <rect x="380" y="20" width="150" height="86" rx="8" class="node"/>
+    <text x="455" y="50" text-anchor="middle" font-weight="600">② Question</text>
+    <text x="455" y="72" text-anchor="middle" class="t2">"We're seeing ECC errors</text>
+    <text x="455" y="90" text-anchor="middle" class="t2">on gpu-0039…"</text>
+    <rect x="565" y="20" width="145" height="86" rx="8" class="node"/>
+    <text x="637" y="50" text-anchor="middle" font-weight="600">④ Answer key</text>
+    <text x="637" y="72" text-anchor="middle" class="t2">which procedures</text>
+    <text x="637" y="90" text-anchor="middle" class="t2">fit this GPU</text>
+    <rect x="370" y="160" width="340" height="70" rx="8" class="node"/>
+    <text x="540" y="190" text-anchor="middle" font-weight="600">③ 26 procedures with written conditions</text>
+    <text x="540" y="212" text-anchor="middle" class="t2">"applies when uncorrected errors today ≥ 1"</text>
+    <path d="M160 63 H190" class="arrow" marker-end="url(#a1)"/>
+    <path d="M345 63 H375" class="arrow" marker-end="url(#a1)"/>
+    <path d="M530 63 H560" class="arrow" marker-end="url(#a1)"/>
+    <path d="M680 160 V112" class="arrow" marker-end="url(#a1)"/>
+    <path d="M270 106 V130 H600 V112" class="arrow" marker-end="url(#a1)"/>
+    <text x="285" y="148" class="t2">true numbers checked against every procedure's conditions</text>
+  </svg>
+  </div>
+
+  <h3>① Fleet data: GPU health numbers</h3>
+  <p>300 fictional GPUs in two hardware models (150 "class A", 150 "class B"), one row per GPU per day for 30 days, with 15 measurements per row. Most days are healthy. Here is gpu-0039's last week. The planted fault is on day 29:</p>
+  <div class="box scroll"><table>
+    <thead><tr><th>Day</th><th class="num">Peak temp °C</th><th class="num">Corrected memory errors</th><th class="num">Uncorrected memory errors</th><th class="num">PCIe replays</th><th class="num">GPU-link errors</th></tr></thead>
+    <tbody>
+      <tr><td>23</td><td class="num">61.0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>24</td><td class="num">63.6</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>25</td><td class="num">58.6</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>26</td><td class="num">53.8</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">8</td></tr>
+      <tr><td>27</td><td class="num">59.5</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>28</td><td class="num">60.7</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr class="hl"><td>29 (today)</td><td class="num">56.4</td><td class="num">0</td><td class="num">4</td><td class="num">0</td><td class="num">0</td></tr>
+    </tbody></table>
+    <p style="margin-top:10px;font-size:.85rem;color:var(--ink-2)">The full table has 10 more columns: thermal throttling, uncontained errors, memory-repair pending and failed, PCIe link width, link state, power brake events, power supply status, and corrected and uncorrected server memory errors. File: <code>data/telemetry/fleet.csv.gz</code></p>
+  </div>
+  <p>Procedures look at three time windows: <strong>now</strong> (today's value), <strong>24h</strong> (today), and <strong>7d</strong> (the last 7 days added up, or the highest value for temperature).</p>
+
+  <h3>② Questions</h3>
+  <p>200 questions, one per GPU, written the way an operator would ask. The question describes the symptom. The deciding numbers are only in the GPU's data. There are five kinds, 40 each:</p>
+  <div class="box scroll"><table>
+    <thead><tr><th>Kind</th><th>What makes it tricky</th><th>Example question</th></tr></thead>
+    <tbody>
+      <tr><td>Numbers</td><td>The right action depends on a count or temperature</td><td>"gpu-0177 shows ECC memory errors in its health check. Next steps?" (40 vs 400 errors)</td></tr>
+      <tr><td>Error type</td><td>Same words, different kind of error</td><td>"…hit an uncorrectable ECC error and a job crashed. What now?" (contained or not)</td></tr>
+      <tr><td>Hardware model</td><td>Same question, different procedure per GPU model</td><td>"We're seeing ECC errors on gpu-0039…" (class A or class B)</td></tr>
+      <tr><td>Timing</td><td>It happened earlier this week, not today</td><td>"…had a burst of PCIe replays a few days ago. What should we do now?"</td></tr>
+      <tr><td>Look-alike</td><td>The words point to one topic, the data to another</td><td>"…'s node is reporting memory errors." (server memory, not GPU memory)</td></tr>
+    </tbody></table>
+    <p style="margin-top:10px;font-size:.85rem;color:var(--ink-2)">File: <code>data/queries/queries.jsonl</code></p>
+  </div>
+
+  <h3>③ Procedures</h3>
+  <p>26 runbook procedures for six kinds of problems: GPU memory, temperature, PCIe, GPU-to-GPU links, power, and server memory. Each is a short text file. The key part is at the top: the conditions under which it applies, written as data.</p>
+  <pre>id: PROC-005
+title: "Uncorrected GPU memory error (class B): drain and reboot to retire pages"
+device_classes: [class_b]                 <span style="color:var(--ink-2)"># only for class B GPUs</span>
+preconditions:
+  - {metric: ecc_uncorrected, window: 24h, op: ">=", value: 1}   <span style="color:var(--ink-2)"># 1+ uncorrected errors today</span>
+---
+Steps:
+1. Cordon the node and drain all workloads...</pre>
+  <p style="font-size:.85rem;color:var(--ink-2)">Folder: <code>data/corpus/procedures/</code>. Five procedures are generic "collect the logs first" steps with no conditions, one for each topic except server memory.</p>
+
+  <h3>④ Answer key</h3>
+  <p>For every question, each procedure's conditions are checked against that GPU's true numbers. The ones that pass, and are about the right topic, are the right answers. For gpu-0039:</p>
+  <div class="box scroll"><table>
+    <thead><tr><th>Procedure</th><th>Its condition</th><th>gpu-0039 today</th><th>Fits?</th></tr></thead>
+    <tbody>
+      <tr><td>PROC-005 Uncorrected error, class B: drain and reboot</td><td class="mono">class B, uncorrected ≥ 1</td><td class="mono">class B, 4</td><td><span class="pill pass">PASS · right answer</span></td></tr>
+      <tr><td>PROC-001 Corrected errors, low rate: monitor</td><td class="mono">corrected 1–99, uncorrected this week = 0</td><td class="mono">corrected 0, uncorrected 4</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>PROC-002 Corrected errors, high rate: diagnostics</td><td class="mono">corrected ≥ 100</td><td class="mono">corrected 0</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>PROC-003 Contained error, class A: restart job</td><td class="mono">class A only</td><td class="mono">class B</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>PROC-006 Past errors, none today: review history</td><td class="mono">uncorrected today = 0</td><td class="mono">4</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>PROC-009 GPU memory: collect logs first</td><td class="mono">none</td><td class="mono">n/a</td><td><span class="pill pass">PASS · generic</span></td></tr>
+    </tbody></table>
+    <p style="margin-top:10px;font-size:.85rem;color:var(--ink-2)">File: <code>data/queries/qrels.jsonl</code>. Each question's line lists the right procedures and a pass/fail for all 26.</p>
+  </div>
+</section>
+
+<!-- ===================== 3. IMPLEMENTATION ===================== -->
+<section>
+  <span class="eyebrow">3 · The implementation</span>
+  <h2>Five ways to pick procedures, each adding one step</h2>
+  <p>Each setup takes the question and returns its top 3 procedures. C1 to C4 are standard retrieval setups. C5 is the idea being tested. For C1 to C4, the GPU's numbers are pasted into the question as text, which is the common shortcut.</p>
+
+  <div class="box scroll">
+  <svg viewBox="0 0 780 250" width="100%" style="min-width:660px" role="img" aria-label="Pipeline: the question goes through C1 embeddings, C2 adds keywords, C3 adds a hardware filter, C4 re-sorts, and C5 checks conditions against the GPU's real numbers">
+    <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+    <rect x="10" y="40" width="110" height="76" rx="8" class="node"/>
+    <text x="65" y="70" text-anchor="middle" font-weight="600">Question</text>
+    <text x="65" y="90" text-anchor="middle" class="t2">+ GPU numbers</text>
+    <text x="65" y="106" text-anchor="middle" class="t2">as text</text>
+    <rect x="140" y="40" width="115" height="76" rx="8" class="node"/>
+    <text x="197" y="72" text-anchor="middle" font-weight="600">C1 Similar</text>
+    <text x="197" y="94" text-anchor="middle" class="t2">embeddings</text>
+    <rect x="275" y="40" width="120" height="76" rx="8" class="node"/>
+    <text x="335" y="72" text-anchor="middle" font-weight="600">C2 + keywords</text>
+    <text x="335" y="94" text-anchor="middle" class="t2">BM25, merged</text>
+    <rect x="415" y="40" width="125" height="76" rx="8" class="node"/>
+    <text x="477" y="72" text-anchor="middle" font-weight="600">C3 + hardware</text>
+    <text x="477" y="94" text-anchor="middle" class="t2">GPU's model only</text>
+    <rect x="560" y="40" width="105" height="76" rx="8" class="node"/>
+    <text x="612" y="72" text-anchor="middle" font-weight="600">C4 Re-sort</text>
+    <text x="612" y="94" text-anchor="middle" class="t2">2nd model</text>
+    <rect x="685" y="40" width="85" height="76" rx="8" class="node-acc"/>
+    <text x="727" y="72" text-anchor="middle" font-weight="600">C5 Check</text>
+    <text x="727" y="94" text-anchor="middle" class="t2">conditions</text>
+    <rect x="615" y="170" width="160" height="62" rx="8" class="node"/>
+    <text x="695" y="196" text-anchor="middle" font-weight="600">GPU's real numbers</text>
+    <text x="695" y="216" text-anchor="middle" class="t2">looked up directly</text>
+    <path d="M120 78 H135" class="arrow" marker-end="url(#a2)"/>
+    <path d="M255 78 H270" class="arrow" marker-end="url(#a2)"/>
+    <path d="M395 78 H410" class="arrow" marker-end="url(#a2)"/>
+    <path d="M540 78 H555" class="arrow" marker-end="url(#a2)"/>
+    <path d="M665 78 H680" class="arrow" marker-end="url(#a2)"/>
+    <path d="M727 170 V122" class="arrow" marker-end="url(#a2)"/>
+    <text x="140" y="166" class="t2">Each setup adds one step to the one before.</text>
+    <text x="140" y="186" class="t2">C1 to C4 rank procedures by how alike the texts are.</text>
+    <text x="140" y="206" class="t2">C5 keeps C4's order and removes procedures</text>
+    <text x="140" y="226" class="t2">whose conditions are false for this GPU.</text>
+  </svg>
+  </div>
+
+  <h3>The check in C5</h3>
+  <p>For each procedure in C4's list, C5 compares its conditions with the GPU's real numbers and gives one of three verdicts:</p>
+  <div class="box scroll">
+  <svg viewBox="0 0 720 200" width="100%" style="min-width:600px" role="img" aria-label="The check: a procedure gets PASS if every condition holds, FAIL if any is false or the hardware model is wrong, UNKNOWN if data is missing">
+    <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+    <rect x="10" y="66" width="170" height="68" rx="8" class="node"/>
+    <text x="95" y="94" text-anchor="middle" font-weight="600">Procedure's</text>
+    <text x="95" y="114" text-anchor="middle" font-weight="600">conditions</text>
+    <rect x="230" y="66" width="170" height="68" rx="8" class="node"/>
+    <text x="315" y="94" text-anchor="middle" font-weight="600">Compare with</text>
+    <text x="315" y="114" text-anchor="middle" font-weight="600">GPU's numbers</text>
+    <rect x="460" y="8" width="250" height="52" rx="8" class="pass-f"/>
+    <text x="475" y="30" font-weight="600">PASS: all conditions hold</text>
+    <text x="475" y="48" class="t2">keep it</text>
+    <rect x="460" y="74" width="250" height="52" rx="8" class="fail-f"/>
+    <text x="475" y="96" font-weight="600">FAIL: a condition is false</text>
+    <text x="475" y="114" class="t2">or wrong hardware model → drop it</text>
+    <rect x="460" y="140" width="250" height="52" rx="8" class="unk-f"/>
+    <text x="475" y="162" font-weight="600">UNKNOWN: data is missing</text>
+    <text x="475" y="180" class="t2">keep it, but flag "couldn't check"</text>
+    <path d="M180 100 H225" class="arrow" marker-end="url(#a3)"/>
+    <path d="M400 100 L430 100 L430 34 L455 34" class="arrow" marker-end="url(#a3)"/>
+    <path d="M400 100 H455" class="arrow" marker-end="url(#a3)"/>
+    <path d="M430 100 L430 166 L455 166" class="arrow" marker-end="url(#a3)"/>
+  </svg>
+  </div>
+  <p>Two rules: missing data never counts as a pass, and the check only removes procedures. It never changes their order.</p>
+
+  <h3>The example question through all five setups</h3>
+  <p>gpu-0039, class B, 4 uncorrected errors today. These are each setup's actual top 3 from the run:</p>
+  <div class="box scroll"><table>
+    <thead><tr><th>Setup</th><th>1st</th><th>2nd</th><th>3rd</th></tr></thead>
+    <tbody>
+      <tr><td>C1 Sounds similar</td><td><span class="pill fail">001 monitor</span></td><td><span class="pill fail">006 review history</span></td><td><span class="pill fail">003 class A restart</span></td></tr>
+      <tr><td>C2 + keywords</td><td><span class="pill fail">003 class A restart</span></td><td><span class="pill fail">001 monitor</span></td><td><span class="pill pass">009 collect logs</span></td></tr>
+      <tr><td>C3 + hardware</td><td><span class="pill fail">001 monitor</span></td><td><span class="pill pass">009 collect logs</span></td><td><span class="pill fail">002 diagnostics</span></td></tr>
+      <tr><td>C4 re-sort</td><td><span class="pill fail">002 diagnostics</span></td><td><span class="pill fail">001 monitor</span></td><td><span class="pill pass">005 drain &amp; reboot</span></td></tr>
+      <tr><td><strong>C5 check</strong></td><td><span class="pill pass">005 drain &amp; reboot</span></td><td><span class="pill pass">009 collect logs</span></td><td><span class="pill pass">021 GPU-link triage</span></td></tr>
+    </tbody></table>
+    <p style="margin-top:10px;font-size:.85rem;color:var(--ink-2)">Red means the procedure's own conditions say it doesn't apply to this GPU. C4 had the right answer in 3rd place. C5 removed the two red ones above it, so it moved to 1st. File: <code>results/per_question.csv</code> (row Q081)</p>
+  </div>
+</section>
+
+<!-- ===================== 4. SCORING & RESULTS ===================== -->
+<section>
+  <span class="eyebrow">4 · How it's scored, and the results</span>
+  <h2>Across all 200 questions</h2>
+  <p>Three numbers per setup, all compared with the answer key:</p>
+  <ul>
+    <li><strong>First suggestion doesn't fit:</strong> the 1st procedure's conditions are false for that GPU. Lower is better.</li>
+    <li><strong>First suggestion is right:</strong> the 1st procedure is the specific right one. Higher is better.</li>
+    <li><strong>Right procedures found in the top 3:</strong> the share of right procedures that made the top 3. Higher is better.</li>
+  </ul>
+
+  <div class="box" style="display:grid;gap:18px">
+    <div class="legend"><span><span class="sw" style="background:var(--fail)"></span>First suggestion doesn't fit</span><span><span class="sw" style="background:var(--accent)"></span>Right procedures in top 3</span></div>
+    <div class="bars">
+      <div class="bar-row"><span>C1 Sounds similar</span><div class="bar-track"><div class="bar bad" style="width:59%"></div></div><span class="mono">59%</span></div>
+      <div class="bar-row"><span></span><div class="bar-track"><div class="bar good" style="width:45%"></div></div><span class="mono">45%</span></div>
+      <div class="bar-row"><span>C2 + keywords</span><div class="bar-track"><div class="bar bad" style="width:71%"></div></div><span class="mono">71%</span></div>
+      <div class="bar-row"><span></span><div class="bar-track"><div class="bar good" style="width:47%"></div></div><span class="mono">47%</span></div>
+      <div class="bar-row"><span>C3 + hardware</span><div class="bar-track"><div class="bar bad" style="width:68%"></div></div><span class="mono">68%</span></div>
+      <div class="bar-row"><span></span><div class="bar-track"><div class="bar good" style="width:51%"></div></div><span class="mono">51%</span></div>
+      <div class="bar-row"><span>C4 re-sort</span><div class="bar-track"><div class="bar bad" style="width:68%"></div></div><span class="mono">68%</span></div>
+      <div class="bar-row"><span></span><div class="bar-track"><div class="bar good" style="width:47%"></div></div><span class="mono">47%</span></div>
+      <div class="bar-row"><strong>C5 check</strong><div class="bar-track"><div class="bar bad" style="width:0%"></div></div><span class="mono">0%</span></div>
+      <div class="bar-row"><span></span><div class="bar-track"><div class="bar good" style="width:90%"></div></div><span class="mono">90%</span></div>
+    </div>
+    <p style="font-size:.85rem;color:var(--ink-2)">First suggestion was the specific right one: C1 21%, C2 21%, C3 22%, C4 27%, C5 54%. The check itself takes about 2 ms per question.</p>
+  </div>
+
+  <ul>
+    <li><strong>Without the check,</strong> the first suggestion didn't fit the GPU in about two out of three questions.</li>
+    <li><strong>The usual upgrades didn't fix it.</strong> Keywords made it worse, because the pasted numbers match runbook text by accident.</li>
+    <li><strong>The check doubled the hit rate</strong> by clearing out procedures that can't apply.</li>
+  </ul>
+  <div class="callout"><strong>Read the 0% carefully.</strong> C5 checks the same conditions used to build the answer key, so in this test it can't break them. The finding is that the other setups break those conditions most of the time.</div>
+</section>
+
+<!-- ===================== 5. STRESS TESTS ===================== -->
+<section>
+  <span class="eyebrow">5 · Stress tests</span>
+  <h2>What happens when the inputs are imperfect</h2>
+  <div class="grid2">
+    <div class="box card"><h4>Missing data <span class="pill pass">stays safe</span></h4><p>Up to half of each GPU's measurements deleted. C5 found fewer right procedures (90% → 64%) but never passed a bad one off as checked. It flagged them as "couldn't check" instead.</p></div>
+    <div class="box card"><h4>Wrongly written conditions <span class="pill fail">gets fooled</span></h4><p>Some conditions deliberately broken. With 1 in 10 wrong, a procedure that didn't fit got through unflagged in 26% of questions. With 1 in 4 wrong, 54%. The conditions need careful review.</p></div>
+  </div>
+  <p>One more limit: the check removes wrong answers but can't find missing ones. Generic "collect logs" procedures always pass, so they sometimes crowd out the specific right one.</p>
+</section>
+
+<!-- ===================== 6. WHERE THINGS ARE ===================== -->
+<section>
+  <span class="eyebrow">6 · Where everything is</span>
+  <h2>Repository map</h2>
+  <div class="box scroll"><table>
+    <thead><tr><th>What</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>GPU health numbers</td><td><code>data/telemetry/fleet.csv.gz</code></td></tr>
+      <tr><td>26 procedures with conditions</td><td><code>data/corpus/procedures/</code></td></tr>
+      <tr><td>200 questions</td><td><code>data/queries/queries.jsonl</code></td></tr>
+      <tr><td>Answer key</td><td><code>data/queries/qrels.jsonl</code></td></tr>
+      <tr><td>How faults are planted</td><td><code>src/car/generate/scenarios.py</code></td></tr>
+      <tr><td>The five setups</td><td><code>src/car/retrieve/pipeline.py</code></td></tr>
+      <tr><td>The check (PASS / FAIL / UNKNOWN)</td><td><code>src/car/verify/check.py</code></td></tr>
+      <tr><td>All result tables</td><td><code>results/README.md</code></td></tr>
+      <tr><td>Every question, and what each setup picked</td><td><code>results/per_question.csv</code></td></tr>
+    </tbody></table></div>
+  <p style="font-size:.85rem;color:var(--ink-2)">All GPUs, procedures and thresholds are fictional and are not vendor guidance.</p>
+</section>
+
+</main>

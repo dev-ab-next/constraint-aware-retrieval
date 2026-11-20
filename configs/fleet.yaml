@@ -1,0 +1,4 @@
+seed: 20261119
+n_devices: 300          # half class_a, half class_b
+n_days: 30
+queries_per_category: 40
